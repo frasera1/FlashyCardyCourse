@@ -1,0 +1,63 @@
+---
+alwaysApply: true
+---
+# shadcn/ui Component Library
+
+This project uses **shadcn/ui** for all UI elements and components.
+
+## Initialization
+
+If shadcn/ui is not yet initialized in the project, run the following command:
+
+```bash
+npx shadcn@latest init
+```
+
+This will:
+
+- Create a `components.json` configuration file
+- Set up the necessary directory structure (typically `src/components/ui/`)
+- Configure Tailwind CSS for shadcn/ui components
+- Install required dependencies
+
+## Usage Guidelines
+
+1. **All UI components must use shadcn/ui**: When creating or modifying UI elements, use shadcn/ui components instead of creating custom components from scratch.
+
+2. **Installing Components**: If a particular component is not installed, you MUST install it before using it. Use the following command:
+
+   ```bash
+   npx shadcn@latest add [component-name]
+   ```
+
+   For example, to install the button component:
+
+   ```bash
+   npx shadcn@latest add button
+   ```
+
+   Always check if a component exists in `src/components/ui/` before using it. If it doesn't exist, run the installation command first.
+
+3. **Component Location**: shadcn/ui components are typically located in `src/components/ui/` directory.
+
+4. **Customization**: shadcn/ui components are copied into your project, so you can customize them directly. However, prefer using the component's built-in props and variants before modifying the source code.
+
+5. **Styling**: Components use Tailwind CSS v4 and follow the project's design system. Use the `@theme` directive in [globals.css](mdc:src/app/globals.css) for design tokens.
+
+6. **TypeScript**: All shadcn/ui components are fully typed. Import types when extending or wrapping components.
+
+## Common Components
+
+Common shadcn/ui components you may need:
+
+- `Button` - For all buttons and clickable elements
+- `Card` - For card layouts and containers
+- `Input` - For form inputs
+- `Dialog` - For modals and dialogs
+- `Dropdown Menu` - For dropdown menus
+- `Form` - For form handling with react-hook-form
+- `Table` - For data tables
+- `Toast` - For notifications
+- `Sheet` - For slide-over panels
+
+Always check the [shadcn/ui documentation](https://ui.shadcn.com) for available components and their usage.

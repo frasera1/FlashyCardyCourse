@@ -1,0 +1,226 @@
+---
+alwaysApply: true
+description: Drizzle ORM database interaction requirements and patterns
+---
+
+# Drizzle ORM Database Interactions
+
+This project uses **Drizzle ORM** for all database operations. All database interactions MUST use Drizzle schema definitions and queries.
+
+## Database Connection
+
+The database connection is configured in [src/db/index.ts](mdc:src/db/index.ts). Always import and use the exported `db` instance:
+
+```typescript
+import { db } from "@/db";
+```
+
+## Schema Definitions
+
+All table schemas are defined in [src/db/schema.ts](mdc:src/db/schema.ts). The schema includes:
+
+- **`decksTable`** - Flashcard decks created by users
+  - `id` - Primary key (auto-increment)
+  - `userId` - Clerk user ID (varchar)
+  - `title` - Deck title (varchar)
+  - `description` - Optional description (text)
+  - `createdAt` - Creation timestamp
+  - `updatedAt` - Update timestamp
+
+- **`cardsTable`** - Individual flashcards within decks
+  - `id` - Primary key (auto-increment)
+  - `deckId` - Foreign key to decks (cascade delete)
+  - `front` - Question/prompt side (text)
+  - `back` - Answer side (text)
+  - `createdAt` - Creation timestamp
+  - `updatedAt` - Update timestamp
+
+## Required Patterns
+
+### 1. Always Import Schema Tables
+
+```typescript
+import { decksTable, cardsTable } from "@/db/schema";
+```
+
+### 2. Use Drizzle Query Builder
+
+**✅ CORRECT - Use Drizzle queries:**
+
+```typescript
+// Select queries
+const decks = await db.select().from(decksTable);
+const userDecks = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId));
+
+// Insert queries
+await db.insert(decksTable).values({
+  userId: userId,
+  title: "My Deck",
+  description: "Description here",
+});
+
+// Update queries
+await db
+  .update(cardsTable)
+  .set({ back: "Updated answer" })
+  .where(eq(cardsTable.id, cardId));
+
+// Delete queries
+await db.delete(cardsTable).where(eq(cardsTable.id, cardId));
+```
+
+**❌ INCORRECT - Never use raw SQL or other ORMs:**
+
+```typescript
+// ❌ DO NOT use raw SQL
+await db.execute("SELECT * FROM decks WHERE user_id = $1", [userId]);
+
+// ❌ DO NOT use other ORMs (Prisma, TypeORM, etc.)
+// ❌ DO NOT write SQL strings directly
+```
+
+### 3. Use Drizzle Operators for Conditions
+
+Always import and use Drizzle operators from `drizzle-orm`:
+
+```typescript
+import { eq, and, or, like, gt, lt, desc, asc } from "drizzle-orm";
+
+// Examples
+.where(eq(decksTable.userId, userId))
+.where(and(eq(decksTable.userId, userId), eq(decksTable.id, deckId)))
+.where(or(eq(cardsTable.front, "Dog"), eq(cardsTable.front, "Cat")))
+.orderBy(desc(decksTable.createdAt))
+```
+
+### 4. Type Safety
+
+Use Drizzle's type inference for type-safe queries:
+
+```typescript
+// Infer insert type
+const newDeck: typeof decksTable.$inferInsert = {
+  userId: userId,
+  title: "My Deck",
+};
+
+// Infer select type
+type Deck = typeof decksTable.$inferSelect;
+```
+
+### 5. Relationships
+
+Use Drizzle relations for querying related data:
+
+```typescript
+import { decksTable, cardsTable, decksRelations, cardsRelations } from "@/db/schema";
+
+// Query with relations (if needed)
+const deckWithCards = await db.query.decksTable.findFirst({
+  where: eq(decksTable.id, deckId),
+  with: {
+    cards: true,
+  },
+});
+```
+
+## Common Query Patterns
+
+### Get User's Decks
+
+```typescript
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+
+const { userId } = await auth();
+const userDecks = await db
+  .select()
+  .from(decksTable)
+  .where(eq(decksTable.userId, userId!));
+```
+
+### Get Cards for a Deck
+
+```typescript
+import { db } from "@/db";
+import { cardsTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+const deckCards = await db
+  .select()
+  .from(cardsTable)
+  .where(eq(cardsTable.deckId, deckId));
+```
+
+### Create Deck with Cards
+
+```typescript
+import { db } from "@/db";
+import { decksTable, cardsTable } from "@/db/schema";
+
+// Create deck
+const [newDeck] = await db
+  .insert(decksTable)
+  .values({
+    userId: userId,
+    title: "My Deck",
+    description: "Description",
+  })
+  .returning();
+
+// Add cards
+await db.insert(cardsTable).values([
+  { deckId: newDeck.id, front: "Question 1", back: "Answer 1" },
+  { deckId: newDeck.id, front: "Question 2", back: "Answer 2" },
+]);
+```
+
+## Server Actions and API Routes
+
+When using Drizzle in Server Actions or API Routes:
+
+```typescript
+"use server";
+
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+
+export async function getUserDecks() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  return await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+}
+```
+
+## Migration and Schema Changes
+
+- **Never modify the database schema directly** - always update [src/db/schema.ts](mdc:src/db/schema.ts)
+- Use `npm run db:push` to push schema changes during development
+- Use `npm run db:generate` and `npm run db:migrate` for production migrations
+
+## Important Rules
+
+1. ✅ **ALWAYS** import tables from `@/db/schema`
+2. ✅ **ALWAYS** use the `db` instance from `@/db`
+3. ✅ **ALWAYS** use Drizzle query builder methods (`.select()`, `.insert()`, `.update()`, `.delete()`)
+4. ✅ **ALWAYS** use Drizzle operators (`eq`, `and`, `or`, etc.) for conditions
+5. ❌ **NEVER** write raw SQL queries
+6. ❌ **NEVER** use other ORMs or database libraries
+7. ❌ **NEVER** bypass the schema definitions
+
+## Reference
+
+- Drizzle ORM Documentation: https://orm.drizzle.team/docs/overview
+- Schema file: [src/db/schema.ts](mdc:src/db/schema.ts)
+- Database connection: [src/db/index.ts](mdc:src/db/index.ts)
