@@ -1,9 +1,13 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { db } from '@/db'
-import { decksTable } from '@/db/schema'
-import { eq, desc } from 'drizzle-orm'
 import { UserButton } from '@clerk/nextjs'
+import { getUserDecks } from '@/db/queries/decks'
+import {
+  Card,
+  CardContent,
+} from '@/components/ui/card'
+import { CreateDeckDialog } from './create-deck-dialog'
+import { DeckCard } from './deck-card'
 
 export default async function DashboardPage() {
   const { userId } = await auth()
@@ -12,12 +16,14 @@ export default async function DashboardPage() {
     redirect('/')
   }
 
-  // Fetch user's decks
-  const decks = await db
-    .select()
-    .from(decksTable)
-    .where(eq(decksTable.userId, userId))
-    .orderBy(desc(decksTable.createdAt))
+  // Fetch user's decks using query function
+  let decks: Awaited<ReturnType<typeof getUserDecks>>
+  try {
+    decks = await getUserDecks(userId)
+  } catch (error) {
+    console.error('Failed to fetch decks:', error)
+    decks = []
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -28,39 +34,28 @@ export default async function DashboardPage() {
         </div>
       </header>
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground">Your Decks</h2>
-          <p className="text-muted-foreground mt-2">
-            Manage and study your flashcard decks
-          </p>
-        </div>
-        {decks.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-8 text-center">
-            <p className="text-muted-foreground">
-              You don't have any decks yet. Create your first deck to get
-              started!
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-foreground">Your Decks</h2>
+            <p className="text-muted-foreground mt-2">
+              Manage and study your flashcard decks
             </p>
           </div>
+          <CreateDeckDialog />
+        </div>
+        {decks.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground">
+                You do not have any decks yet. Create your first deck to get
+                started!
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {decks.map((deck) => (
-              <div
-                key={deck.id}
-                className="rounded-lg border border-border bg-card p-6 hover:border-primary transition-colors"
-              >
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  {deck.title}
-                </h3>
-                {deck.description && (
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {deck.description}
-                  </p>
-                )}
-                <div className="text-xs text-muted-foreground">
-                  Created{' '}
-                  {new Date(deck.createdAt).toLocaleDateString()}
-                </div>
-              </div>
+              <DeckCard key={deck.id} deck={deck} />
             ))}
           </div>
         )}

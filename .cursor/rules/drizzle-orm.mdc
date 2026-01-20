@@ -7,6 +7,8 @@ description: Drizzle ORM database interaction requirements and patterns
 
 This project uses **Drizzle ORM** for all database operations. All database interactions MUST use Drizzle schema definitions and queries.
 
+**CRITICAL:** Direct Drizzle queries are ONLY allowed in **`db/queries`** directory. Server Components and Server Actions MUST call these query functions instead of writing direct database queries.
+
 ## Database Connection
 
 The database connection is configured in [src/db/index.ts](mdc:src/db/index.ts). Always import and use the exported `db` instance:
@@ -37,42 +39,172 @@ All table schemas are defined in [src/db/schema.ts](mdc:src/db/schema.ts). The s
 
 ## Required Patterns
 
-### 1. Always Import Schema Tables
+### 1. Query Functions in db/queries Directory
+
+**✅ CORRECT - Create query functions in db/queries:**
 
 ```typescript
+// db/queries/decks.ts
+import { db } from "@/db";
 import { decksTable, cardsTable } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+
+// Query function for getting user's decks
+export async function getUserDecks(userId: string) {
+  return await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+}
+
+// Query function for getting a specific deck
+export async function getDeckById(userId: string, deckId: number) {
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)));
+
+  if (!deck) {
+    throw new Error("Deck not found or access denied");
+  }
+
+  return deck;
+}
+
+// Mutation function for creating a deck
+export async function createDeck(userId: string, data: { title: string; description?: string }) {
+  const [newDeck] = await db
+    .insert(decksTable)
+    .values({
+      userId,
+      title: data.title,
+      description: data.description,
+    })
+    .returning();
+
+  return newDeck;
+}
+
+// Mutation function for updating a deck
+export async function updateDeck(
+  userId: string,
+  deckId: number,
+  data: { title?: string; description?: string }
+) {
+  // Verify ownership first
+  await getDeckById(userId, deckId);
+
+  await db
+    .update(decksTable)
+    .set(data)
+    .where(and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)));
+}
+
+// Mutation function for deleting a deck
+export async function deleteDeck(userId: string, deckId: number) {
+  // Verify ownership first
+  await getDeckById(userId, deckId);
+
+  await db
+    .delete(decksTable)
+    .where(and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)));
+}
 ```
 
-### 2. Use Drizzle Query Builder
-
-**✅ CORRECT - Use Drizzle queries:**
+**✅ CORRECT - Call query functions from Server Components:**
 
 ```typescript
-// Select queries
-const decks = await db.select().from(decksTable);
-const userDecks = await db
-  .select()
-  .from(decksTable)
-  .where(eq(decksTable.userId, userId));
+// app/decks/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getUserDecks } from "@/db/queries/decks";
 
-// Insert queries
-await db.insert(decksTable).values({
-  userId: userId,
-  title: "My Deck",
-  description: "Description here",
+export default async function DecksPage() {
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/sign-in");
+  }
+
+  // ✅ Call query function
+  const decks = await getUserDecks(userId);
+
+  return (
+    <div>
+      {decks.map((deck) => (
+        <div key={deck.id}>{deck.title}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+**✅ CORRECT - Call mutation functions from Server Actions:**
+
+```typescript
+// app/actions/deck-actions.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { z } from "zod";
+import { createDeck } from "@/db/queries/decks";
+
+const createDeckSchema = z.object({
+  title: z.string().min(1).max(255),
+  description: z.string().optional(),
 });
 
-// Update queries
-await db
-  .update(cardsTable)
-  .set({ back: "Updated answer" })
-  .where(eq(cardsTable.id, cardId));
+type CreateDeckInput = z.infer<typeof createDeckSchema>;
 
-// Delete queries
-await db.delete(cardsTable).where(eq(cardsTable.id, cardId));
+export async function createDeckAction(input: CreateDeckInput) {
+  const validated = createDeckSchema.parse(input);
+
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  // ✅ Call mutation function
+  return await createDeck(userId, validated);
+}
 ```
 
-**❌ INCORRECT - Never use raw SQL or other ORMs:**
+**❌ INCORRECT - Direct queries in Server Components/Actions:**
+
+```typescript
+// ❌ DO NOT write direct Drizzle queries in Server Components
+// app/decks/page.tsx
+import { db } from "@/db";
+import { decksTable } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+export default async function DecksPage() {
+  const { userId } = await auth();
+
+  // ❌ Direct database query - should be in db/queries
+  const decks = await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId));
+
+  return <div>...</div>;
+}
+
+// ❌ DO NOT write direct Drizzle queries in Server Actions
+// app/actions/deck-actions.ts
+"use server";
+
+export async function createDeckAction(input: { title: string }) {
+  const { userId } = await auth();
+
+  // ❌ Direct database query - should be in db/queries
+  const [newDeck] = await db.insert(decksTable).values({
+    userId,
+    title: input.title,
+  });
+
+  return newDeck;
+}
+```
+
+**❌ INCORRECT - Raw SQL or other ORMs:**
 
 ```typescript
 // ❌ DO NOT use raw SQL
@@ -82,124 +214,303 @@ await db.execute("SELECT * FROM decks WHERE user_id = $1", [userId]);
 // ❌ DO NOT write SQL strings directly
 ```
 
-### 3. Use Drizzle Operators for Conditions
-
-Always import and use Drizzle operators from `drizzle-orm`:
+### 2. Always Import Schema Tables in Query Functions
 
 ```typescript
+// db/queries/decks.ts
+import { decksTable, cardsTable } from "@/db/schema";
+```
+
+### 3. Use Drizzle Operators for Conditions (in db/queries only)
+
+Always import and use Drizzle operators from `drizzle-orm` in your query functions:
+
+```typescript
+// db/queries/decks.ts
 import { eq, and, or, like, gt, lt, desc, asc } from "drizzle-orm";
 
-// Examples
-.where(eq(decksTable.userId, userId))
-.where(and(eq(decksTable.userId, userId), eq(decksTable.id, deckId)))
-.where(or(eq(cardsTable.front, "Dog"), eq(cardsTable.front, "Cat")))
-.orderBy(desc(decksTable.createdAt))
+// Examples in query functions
+export async function getUserDecks(userId: string) {
+  return await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId))
+    .orderBy(desc(decksTable.createdAt));
+}
+
+export async function getDeckById(userId: string, deckId: number) {
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(and(eq(decksTable.userId, userId), eq(decksTable.id, deckId)));
+
+  return deck;
+}
+
+export async function searchDecks(userId: string, searchTerm: string) {
+  return await db
+    .select()
+    .from(decksTable)
+    .where(and(eq(decksTable.userId, userId), like(decksTable.title, `%${searchTerm}%`)));
+}
 ```
 
 ### 4. Type Safety
 
-Use Drizzle's type inference for type-safe queries:
+Use Drizzle's type inference for type-safe query functions:
 
 ```typescript
-// Infer insert type
-const newDeck: typeof decksTable.$inferInsert = {
-  userId: userId,
-  title: "My Deck",
-};
+// db/queries/decks.ts
+import { decksTable } from "@/db/schema";
 
-// Infer select type
+// Infer insert type for function parameters
+type NewDeckData = typeof decksTable.$inferInsert;
+
+// Infer select type for return values
 type Deck = typeof decksTable.$inferSelect;
+
+export async function createDeck(
+  userId: string,
+  data: Pick<NewDeckData, "title" | "description">
+): Promise<Deck> {
+  const [newDeck] = await db
+    .insert(decksTable)
+    .values({
+      userId,
+      ...data,
+    })
+    .returning();
+
+  return newDeck;
+}
 ```
 
 ### 5. Relationships
 
-Use Drizzle relations for querying related data:
+Use Drizzle relations for querying related data in query functions:
 
 ```typescript
-import { decksTable, cardsTable, decksRelations, cardsRelations } from "@/db/schema";
+// db/queries/decks.ts
+import { db } from "@/db";
+import { decksTable, cardsTable } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-// Query with relations (if needed)
-const deckWithCards = await db.query.decksTable.findFirst({
-  where: eq(decksTable.id, deckId),
-  with: {
-    cards: true,
-  },
-});
+// Query with relations using the query API
+export async function getDeckWithCards(userId: string, deckId: number) {
+  const deck = await db.query.decksTable.findFirst({
+    where: and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)),
+    with: {
+      cards: true,
+    },
+  });
+
+  if (!deck) {
+    throw new Error("Deck not found or access denied");
+  }
+
+  return deck;
+}
+
+// Alternative: Manual join
+export async function getDeckWithCardsManual(userId: string, deckId: number) {
+  const result = await db
+    .select({
+      deck: decksTable,
+      card: cardsTable,
+    })
+    .from(decksTable)
+    .leftJoin(cardsTable, eq(cardsTable.deckId, decksTable.id))
+    .where(and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)));
+
+  if (result.length === 0) {
+    throw new Error("Deck not found or access denied");
+  }
+
+  // Transform the result as needed
+  const deck = result[0].deck;
+  const cards = result.map((r) => r.card).filter(Boolean);
+
+  return { ...deck, cards };
+}
 ```
 
-## Common Query Patterns
+## Common Query Patterns (db/queries directory)
 
 ### Get User's Decks
 
 ```typescript
+// db/queries/decks.ts
 import { db } from "@/db";
 import { decksTable } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { auth } from "@clerk/nextjs/server";
+import { eq, desc } from "drizzle-orm";
 
-const { userId } = await auth();
-const userDecks = await db
-  .select()
-  .from(decksTable)
-  .where(eq(decksTable.userId, userId!));
+export async function getUserDecks(userId: string) {
+  return await db
+    .select()
+    .from(decksTable)
+    .where(eq(decksTable.userId, userId))
+    .orderBy(desc(decksTable.createdAt));
+}
 ```
 
-### Get Cards for a Deck
+### Get Cards for a Deck (with ownership verification)
 
 ```typescript
+// db/queries/cards.ts
 import { db } from "@/db";
-import { cardsTable } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { decksTable, cardsTable } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-const deckCards = await db
-  .select()
-  .from(cardsTable)
-  .where(eq(cardsTable.deckId, deckId));
+export async function getDeckCards(userId: string, deckId: number) {
+  // First verify deck ownership
+  const [deck] = await db
+    .select()
+    .from(decksTable)
+    .where(and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)));
+
+  if (!deck) {
+    throw new Error("Deck not found or access denied");
+  }
+
+  // Then get cards
+  return await db.select().from(cardsTable).where(eq(cardsTable.deckId, deckId));
+}
 ```
 
-### Create Deck with Cards
+### Create Deck with Cards (Transaction)
 
 ```typescript
+// db/queries/decks.ts
 import { db } from "@/db";
 import { decksTable, cardsTable } from "@/db/schema";
 
-// Create deck
-const [newDeck] = await db
-  .insert(decksTable)
-  .values({
-    userId: userId,
-    title: "My Deck",
-    description: "Description",
-  })
-  .returning();
+export async function createDeckWithCards(
+  userId: string,
+  deckData: { title: string; description?: string },
+  cards: Array<{ front: string; back: string }>
+) {
+  // Use transaction for atomic operation
+  return await db.transaction(async (tx) => {
+    // Create deck
+    const [newDeck] = await tx
+      .insert(decksTable)
+      .values({
+        userId,
+        title: deckData.title,
+        description: deckData.description,
+      })
+      .returning();
 
-// Add cards
-await db.insert(cardsTable).values([
-  { deckId: newDeck.id, front: "Question 1", back: "Answer 1" },
-  { deckId: newDeck.id, front: "Question 2", back: "Answer 2" },
-]);
+    // Add cards
+    if (cards.length > 0) {
+      await tx.insert(cardsTable).values(
+        cards.map((card) => ({
+          deckId: newDeck.id,
+          front: card.front,
+          back: card.back,
+        }))
+      );
+    }
+
+    return newDeck;
+  });
+}
 ```
 
-## Server Actions and API Routes
+## Organization: Query Functions vs Server Actions
 
-When using Drizzle in Server Actions or API Routes:
+### Query Functions (db/queries) - Database Logic Only
 
 ```typescript
-"use server";
-
+// db/queries/decks.ts
 import { db } from "@/db";
 import { decksTable } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { auth } from "@clerk/nextjs/server";
 
-export async function getUserDecks() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
+// ✅ Pure database operations, no auth logic
+export async function getUserDecks(userId: string) {
   return await db
     .select()
     .from(decksTable)
     .where(eq(decksTable.userId, userId));
+}
+
+export async function createDeck(userId: string, data: { title: string; description?: string }) {
+  const [newDeck] = await db
+    .insert(decksTable)
+    .values({
+      userId,
+      title: data.title,
+      description: data.description,
+    })
+    .returning();
+
+  return newDeck;
+}
+```
+
+### Server Actions (app/actions) - Auth + Validation + Query Calls
+
+```typescript
+// app/actions/deck-actions.ts
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { z } from "zod";
+import { getUserDecks, createDeck } from "@/db/queries/decks";
+
+// ✅ Server Action handles auth and validation, calls query function
+export async function getUserDecksAction() {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  // ✅ Call query function
+  return await getUserDecks(userId);
+}
+
+const createDeckSchema = z.object({
+  title: z.string().min(1).max(255),
+  description: z.string().optional(),
+});
+
+export async function createDeckAction(input: z.infer<typeof createDeckSchema>) {
+  // Validate input
+  const validated = createDeckSchema.parse(input);
+
+  // Authenticate
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  // ✅ Call mutation function
+  return await createDeck(userId, validated);
+}
+```
+
+### Server Components - Auth + Query Calls
+
+```typescript
+// app/decks/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getUserDecks } from "@/db/queries/decks";
+
+export default async function DecksPage() {
+  // Authenticate
+  const { userId } = await auth();
+  if (!userId) {
+    redirect("/sign-in");
+  }
+
+  // ✅ Call query function
+  const decks = await getUserDecks(userId);
+
+  return (
+    <div>
+      {decks.map((deck) => (
+        <div key={deck.id}>{deck.title}</div>
+      ))}
+    </div>
+  );
 }
 ```
 
@@ -211,16 +522,52 @@ export async function getUserDecks() {
 
 ## Important Rules
 
-1. ✅ **ALWAYS** import tables from `@/db/schema`
-2. ✅ **ALWAYS** use the `db` instance from `@/db`
-3. ✅ **ALWAYS** use Drizzle query builder methods (`.select()`, `.insert()`, `.update()`, `.delete()`)
-4. ✅ **ALWAYS** use Drizzle operators (`eq`, `and`, `or`, etc.) for conditions
-5. ❌ **NEVER** write raw SQL queries
-6. ❌ **NEVER** use other ORMs or database libraries
-7. ❌ **NEVER** bypass the schema definitions
+### Query Functions (db/queries)
+
+1. ✅ **ALWAYS** create query/mutation functions in `db/queries` directory
+2. ✅ **ALWAYS** import tables from `@/db/schema` in query functions
+3. ✅ **ALWAYS** use the `db` instance from `@/db`
+4. ✅ **ALWAYS** use Drizzle query builder methods (`.select()`, `.insert()`, `.update()`, `.delete()`)
+5. ✅ **ALWAYS** use Drizzle operators (`eq`, `and`, `or`, etc.) for conditions
+6. ✅ **ALWAYS** accept userId as a parameter for user-scoped operations
+7. ✅ **ALWAYS** verify ownership before updates/deletes
+8. ✅ **ALWAYS** filter queries by userId for user-scoped data
+
+### Server Components & Server Actions
+
+9. ✅ **ALWAYS** call query functions from `db/queries` in Server Components
+10. ✅ **ALWAYS** call mutation functions from `db/queries` in Server Actions
+11. ✅ **ALWAYS** handle authentication before calling query functions
+12. ❌ **NEVER** write direct Drizzle queries in Server Components
+13. ❌ **NEVER** write direct Drizzle queries in Server Actions
+14. ❌ **NEVER** import `db` instance in Server Components or Server Actions
+
+### General
+
+15. ❌ **NEVER** write raw SQL queries
+16. ❌ **NEVER** use other ORMs or database libraries
+17. ❌ **NEVER** bypass the schema definitions
+18. ❌ **NEVER** expose query functions to client-side code
+
+## Directory Structure
+
+```
+src/
+├── db/
+│   ├── index.ts          # Database connection
+│   ├── schema.ts         # Table schemas
+│   └── queries/          # Query and mutation functions
+│       ├── decks.ts      # Deck-related queries
+│       ├── cards.ts      # Card-related queries
+│       └── ...
+├── app/
+│   ├── actions/          # Server Actions (call db/queries)
+│   └── [routes]/         # Server Components (call db/queries)
+```
 
 ## Reference
 
 - Drizzle ORM Documentation: https://orm.drizzle.team/docs/overview
 - Schema file: [src/db/schema.ts](mdc:src/db/schema.ts)
 - Database connection: [src/db/index.ts](mdc:src/db/index.ts)
+- Query functions: [src/db/queries/](mdc:src/db/queries/)

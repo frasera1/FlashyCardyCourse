@@ -1,9 +1,55 @@
 ---
 alwaysApply: true
 ---
-# shadcn/ui Component Library
+# shadcn/ui Component Library - STRICT MODE
 
-This project uses **shadcn/ui** for all UI elements and components.
+This project uses **shadcn/ui EXCLUSIVELY** for all UI elements and components.
+
+## ⚠️ CRITICAL RULES - NO EXCEPTIONS
+
+### 1. **ABSOLUTELY NO CUSTOM UI COMPONENTS**
+- ❌ **NEVER** create custom UI components from scratch
+- ❌ **NEVER** write custom button, card, input, or any UI element components
+- ❌ **NEVER** create custom styled divs as replacements for shadcn/ui components
+- ✅ **ALWAYS** use shadcn/ui components for ALL UI elements
+- ✅ **ALWAYS** install the required shadcn/ui component if it doesn't exist
+
+### 2. **ONLY shadcn/ui Components Allowed**
+- Every button MUST be a shadcn/ui `Button` component
+- Every card MUST be a shadcn/ui `Card` component
+- Every input MUST be a shadcn/ui `Input` component
+- Every dialog/modal MUST be a shadcn/ui `Dialog` component
+- Every form MUST use shadcn/ui `Form` components
+- If you need a UI element, find the shadcn/ui equivalent and use it
+
+### 3. **Clerk Integration Rules**
+- ✅ **ALWAYS** use shadcn/ui `Button` component for Clerk sign-in/sign-up triggers
+- ✅ **ALWAYS** use `mode="modal"` for Clerk authentication (SignInButton, SignUpButton)
+- ❌ **NEVER** use Clerk's default unstyled buttons
+- ❌ **NEVER** use redirect mode for Clerk authentication
+
+**CORRECT Clerk Integration:**
+```typescript
+import { SignInButton, SignUpButton } from '@clerk/nextjs'
+import { Button } from '@/components/ui/button'
+
+// ✅ CORRECT - shadcn/ui Button with modal mode
+<SignInButton mode="modal">
+  <Button variant="outline">Sign In</Button>
+</SignInButton>
+
+<SignUpButton mode="modal">
+  <Button>Sign Up</Button>
+</SignUpButton>
+
+// ❌ INCORRECT - Using Clerk's default button
+<SignInButton>Sign In</SignInButton>
+
+// ❌ INCORRECT - Using redirect mode
+<SignInButton mode="redirect">
+  <Button>Sign In</Button>
+</SignInButton>
+```
 
 ## Initialization
 
@@ -22,7 +68,7 @@ This will:
 
 ## Usage Guidelines
 
-1. **All UI components must use shadcn/ui**: When creating or modifying UI elements, use shadcn/ui components instead of creating custom components from scratch.
+1. **MANDATORY shadcn/ui Usage**: EVERY UI element in this project MUST be a shadcn/ui component. There are NO exceptions.
 
 2. **Installing Components**: If a particular component is not installed, you MUST install it before using it. Use the following command:
 
@@ -38,26 +84,87 @@ This will:
 
    Always check if a component exists in `src/components/ui/` before using it. If it doesn't exist, run the installation command first.
 
-3. **Component Location**: shadcn/ui components are typically located in `src/components/ui/` directory.
+3. **Component Location**: shadcn/ui components are located in `src/components/ui/` directory.
 
 4. **Customization**: shadcn/ui components are copied into your project, so you can customize them directly. However, prefer using the component's built-in props and variants before modifying the source code.
 
-5. **Styling**: Components use Tailwind CSS v4 and follow the project's design system. Use the `@theme` directive in [globals.css](mdc:src/app/globals.css) for design tokens.
+5. **Styling**: Components use Tailwind CSS v4 and follow the project's design system. Use the `@theme` directive in [globals.css](mdc:src/app/globals.css) for design tokens. Only apply Tailwind classes to shadcn/ui components, never create standalone styled elements.
 
 6. **TypeScript**: All shadcn/ui components are fully typed. Import types when extending or wrapping components.
 
-## Common Components
+## Required shadcn/ui Components
 
-Common shadcn/ui components you may need:
+Components you MUST use in this project:
 
-- `Button` - For all buttons and clickable elements
-- `Card` - For card layouts and containers
-- `Input` - For form inputs
-- `Dialog` - For modals and dialogs
-- `Dropdown Menu` - For dropdown menus
-- `Form` - For form handling with react-hook-form
-- `Table` - For data tables
-- `Toast` - For notifications
-- `Sheet` - For slide-over panels
+- `Button` - For ALL buttons and clickable elements (including Clerk auth buttons)
+- `Card` - For ALL card layouts and containers
+- `Input` - For ALL form inputs
+- `Dialog` - For ALL modals and dialogs
+- `Dropdown Menu` - For ALL dropdown menus
+- `Form` - For ALL form handling with react-hook-form
+- `Table` - For ALL data tables
+- `Toast` - For ALL notifications
+- `Sheet` - For ALL slide-over panels
+- `Badge` - For ALL badges and tags
+- `Avatar` - For ALL user avatars
+- `Skeleton` - For ALL loading states
 
-Always check the [shadcn/ui documentation](https://ui.shadcn.com) for available components and their usage.
+## What This Means in Practice
+
+### ✅ CORRECT Examples
+
+```typescript
+// Using shadcn/ui Button
+import { Button } from '@/components/ui/button'
+<Button variant="outline">Click Me</Button>
+
+// Using shadcn/ui Card
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+<Card>
+  <CardHeader>
+    <CardTitle>Title</CardTitle>
+  </CardHeader>
+  <CardContent>Content</CardContent>
+</Card>
+
+// Using shadcn/ui Input
+import { Input } from '@/components/ui/input'
+<Input type="text" placeholder="Enter text" />
+
+// Using shadcn/ui Badge
+import { Badge } from '@/components/ui/badge'
+<Badge>New</Badge>
+```
+
+### ❌ INCORRECT Examples
+
+```typescript
+// ❌ NEVER create custom buttons
+<button className="px-4 py-2 bg-blue-500">Click Me</button>
+
+// ❌ NEVER create custom cards
+<div className="rounded-lg border p-4">
+  <h3>Title</h3>
+  <p>Content</p>
+</div>
+
+// ❌ NEVER create custom inputs
+<input className="border rounded px-2 py-1" type="text" />
+
+// ❌ NEVER create custom styled components
+const CustomButton = styled.button`
+  padding: 8px 16px;
+  background: blue;
+`
+```
+
+## Enforcement
+
+If you find yourself about to create ANY UI element:
+
+1. **STOP** - Check if shadcn/ui has a component for this
+2. **SEARCH** - Look at [shadcn/ui documentation](https://ui.shadcn.com)
+3. **INSTALL** - Run `npx shadcn@latest add [component-name]`
+4. **USE** - Import and use the shadcn/ui component
+
+**NEVER CREATE CUSTOM UI. ALWAYS USE SHADCN/UI.**
