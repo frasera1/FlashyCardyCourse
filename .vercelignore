@@ -1,0 +1,3 @@
+# Vercel ignore file
+# This helps avoid deployment issues with cached files
+.next/cache
