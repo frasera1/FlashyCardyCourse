@@ -8,6 +8,7 @@ import {
   updateDeck,
   deleteDeck,
   createDeckWithCards,
+  getUserDecks,
 } from '@/db/queries/decks'
 
 // Validation schemas
@@ -53,15 +54,27 @@ export async function createDeckAction(input: CreateDeckInput) {
   const validated = createDeckSchema.parse(input)
 
   // 2. Authenticate
-  const { userId } = await auth()
+  const { userId, has } = await auth()
   if (!userId) {
     throw new Error('Unauthorized')
   }
 
-  // 3. Call mutation function
+  // 3. Check deck limit for free users
+  const hasUnlimitedDecks = has({ feature: 'unlimited_decks' })
+  
+  if (!hasUnlimitedDecks) {
+    // User is on free plan - enforce 3 deck limit
+    const existingDecks = await getUserDecks(userId)
+    
+    if (existingDecks.length >= 3) {
+      throw new Error('Deck limit reached. Upgrade to Pro for unlimited decks.')
+    }
+  }
+
+  // 4. Call mutation function
   const newDeck = await createDeck(userId, validated)
 
-  // 4. Revalidate the dashboard page
+  // 5. Revalidate the dashboard page
   revalidatePath('/dashboard')
 
   return newDeck
@@ -75,12 +88,24 @@ export async function createDeckWithCardsAction(input: CreateDeckWithCardsInput)
   const validated = createDeckWithCardsSchema.parse(input)
 
   // 2. Authenticate
-  const { userId } = await auth()
+  const { userId, has } = await auth()
   if (!userId) {
     throw new Error('Unauthorized')
   }
 
-  // 3. Call mutation function
+  // 3. Check deck limit for free users
+  const hasUnlimitedDecks = has({ feature: 'unlimited_decks' })
+  
+  if (!hasUnlimitedDecks) {
+    // User is on free plan - enforce 3 deck limit
+    const existingDecks = await getUserDecks(userId)
+    
+    if (existingDecks.length >= 3) {
+      throw new Error('Deck limit reached. Upgrade to Pro for unlimited decks.')
+    }
+  }
+
+  // 4. Call mutation function
   const newDeck = await createDeckWithCards(
     userId,
     {
@@ -90,7 +115,7 @@ export async function createDeckWithCardsAction(input: CreateDeckWithCardsInput)
     validated.cards
   )
 
-  // 4. Revalidate the dashboard page
+  // 5. Revalidate the dashboard page
   revalidatePath('/dashboard')
 
   return newDeck

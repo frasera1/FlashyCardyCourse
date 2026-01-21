@@ -1,6 +1,5 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { UserButton } from '@clerk/nextjs'
 import { getUserDecks } from '@/db/queries/decks'
 import {
   Card,
@@ -8,9 +7,11 @@ import {
 } from '@/components/ui/card'
 import { CreateDeckDialog } from './create-deck-dialog'
 import { DeckCard } from './deck-card'
+import Link from 'next/link'
+import { AppHeader } from '@/components/app-header'
 
 export default async function DashboardPage() {
-  const { userId } = await auth()
+  const { userId, has } = await auth()
 
   if (!userId) {
     redirect('/')
@@ -25,14 +26,17 @@ export default async function DashboardPage() {
     decks = []
   }
 
+  // Check if user has unlimited decks feature (Pro plan)
+  const hasUnlimitedDecks = has({ feature: 'unlimited_decks' })
+
+  // Determine if user can create more decks
+  const canCreateDeck = hasUnlimitedDecks || decks.length < 3
+  const deckCount = decks.length
+  const deckLimit = hasUnlimitedDecks ? null : 3
+
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <h1 className="text-2xl font-bold text-foreground">Flashy Cardy Course</h1>
-          <UserButton />
-        </div>
-      </header>
+      <AppHeader />
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -40,8 +44,21 @@ export default async function DashboardPage() {
             <p className="text-muted-foreground mt-2">
               Manage and study your flashcard decks
             </p>
+            {!hasUnlimitedDecks && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {deckCount} of {deckLimit} decks created.{' '}
+                <Link href="/pricing" className="text-primary hover:underline">
+                  Upgrade to Pro
+                </Link>{' '}
+                for unlimited decks.
+              </p>
+            )}
           </div>
-          <CreateDeckDialog />
+          <CreateDeckDialog
+            disabled={!canCreateDeck}
+            deckCount={deckCount}
+            deckLimit={deckLimit}
+          />
         </div>
         {decks.length === 0 ? (
           <Card>

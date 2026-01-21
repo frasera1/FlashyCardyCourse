@@ -5,6 +5,7 @@ import {
   SignUpButton,
 } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 export default async function Home() {
   const { userId } = await auth()
@@ -31,6 +32,11 @@ export default async function Home() {
             <Button>Sign Up</Button>
           </SignUpButton>
         </div>
+        <Link href="/pricing">
+          <Button variant="ghost" className="text-muted-foreground">
+            View Pricing
+          </Button>
+        </Link>
       </main>
     </div>
   )

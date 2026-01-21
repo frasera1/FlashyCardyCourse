@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createDeckAction, type CreateDeckInput } from '@/app/actions/deck-actions'
 import {
   Dialog,
@@ -17,7 +18,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
-export function CreateDeckDialog() {
+interface CreateDeckDialogProps {
+  disabled?: boolean
+  deckCount?: number
+  deckLimit?: number | null
+}
+
+export function CreateDeckDialog({ disabled = false, deckCount, deckLimit }: CreateDeckDialogProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -50,10 +57,26 @@ export function CreateDeckDialog() {
     }
   }
 
+  if (disabled && deckLimit) {
+    return (
+      <div className="flex flex-col items-end gap-2">
+        <Button disabled title={`You have reached the deck limit (${deckCount}/${deckLimit})`}>
+          Create New Deck
+        </Button>
+        <p className="text-sm text-muted-foreground">
+          Deck limit reached.{' '}
+          <Link href="/pricing" className="text-primary hover:underline">
+            Upgrade to Pro
+          </Link>
+        </p>
+      </div>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Create New Deck</Button>
+        <Button disabled={disabled}>Create New Deck</Button>
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>

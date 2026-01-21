@@ -1,7 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { UserButton } from '@clerk/nextjs'
 import { getDeckWithCards } from '@/db/queries/decks'
 import {
   Card,
@@ -14,6 +13,8 @@ import { Button } from '@/components/ui/button'
 import { CreateCardDialog } from './create-card-dialog'
 import { EditCardDialog } from './edit-card-dialog'
 import { DeleteCardDialog } from './delete-card-dialog'
+import { GenerateAICardsButton } from './generate-ai-cards-button'
+import { AppHeader } from '@/components/app-header'
 
 type DeckCard = {
   id: number
@@ -31,7 +32,7 @@ type PageProps = {
 }
 
 export default async function DeckPage(props: PageProps) {
-  const { userId } = await auth()
+  const { userId, has } = await auth()
 
   if (!userId) {
     redirect('/')
@@ -45,6 +46,9 @@ export default async function DeckPage(props: PageProps) {
     notFound()
   }
 
+  // Check if user has AI generation feature
+  const hasAIGeneration = has({ feature: 'ai_flashcard_generation' })
+
   // Fetch deck with cards using query function
   let deck: Awaited<ReturnType<typeof getDeckWithCards>>
   try {
@@ -56,14 +60,7 @@ export default async function DeckPage(props: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="container mx-auto flex items-center justify-between px-4 py-4">
-          <h1 className="text-2xl font-bold text-foreground">
-            Flashy Cardy Course
-          </h1>
-          <UserButton />
-        </div>
-      </header>
+      <AppHeader />
       <main className="container mx-auto px-4 py-8">
         <div className="mb-6">
           <Link href="/dashboard">
@@ -81,7 +78,20 @@ export default async function DeckPage(props: PageProps) {
               {deck.cards.length} {deck.cards.length === 1 ? 'card' : 'cards'}
             </p>
           </div>
-          <CreateCardDialog deckId={deck.id} />
+          <div className="flex gap-2">
+            {deck.cards.length > 0 && (
+              <Link href={`/decks/${deck.id}/study`}>
+                <Button variant="default">Study</Button>
+              </Link>
+            )}
+            <GenerateAICardsButton
+              deckId={deck.id}
+              deckTitle={deck.title}
+              deckDescription={deck.description}
+              hasAIGeneration={hasAIGeneration}
+            />
+            <CreateCardDialog deckId={deck.id} />
+          </div>
         </div>
 
         {deck.cards.length === 0 ? (
