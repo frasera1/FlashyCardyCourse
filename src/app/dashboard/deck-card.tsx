@@ -17,6 +17,7 @@ type Deck = {
   title: string
   description: string | null
   updatedAt: Date
+  cardCount: number
 }
 
 export function DeckCard({ deck }: { deck: Deck }) {
@@ -41,9 +42,10 @@ export function DeckCard({ deck }: { deck: Deck }) {
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-end gap-2">
-        <p className="text-xs text-muted-foreground">
-          Updated {new Date(deck.updatedAt).toLocaleDateString()}
-        </p>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Updated {new Date(deck.updatedAt).toLocaleDateString()}</span>
+          <span>{deck.cardCount} {deck.cardCount === 1 ? 'card' : 'cards'}</span>
+        </div>
         <Link href={`/decks/${deck.id}/study`} onClick={(e) => e.stopPropagation()}>
           <Button variant="default" className="w-full" size="sm">
             Study
